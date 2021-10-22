@@ -40,12 +40,11 @@ const TIMEOUT_SERVICE_CONFIG: ServiceConfig = {
   }]
 };
 
-describe('Client with configured timeout', () => {
+describe('Client deadlines', () => {
   let server: grpc.Server;
   let Client: ServiceClientConstructor;
-  let client: ServiceClient;
-  
-  before(done => {
+
+  before(() => {
     Client = loadProtoFile(__dirname + '/fixtures/test_service.proto').TestService as ServiceClientConstructor;
     server = new grpc.Server();
     server.addService(Client.service, {
@@ -54,37 +53,76 @@ describe('Client with configured timeout', () => {
       serverStream: () => {},
       bidiStream: () => {}
     });
-    server.bindAsync('localhost:0', grpc.ServerCredentials.createInsecure(), (error, port) => {
-      if (error) {
-        done(error);
-        return;
-      }
-      server.start();
-      client = new Client(`localhost:${port}`, grpc.credentials.createInsecure(), {'grpc.service_config': JSON.stringify(TIMEOUT_SERVICE_CONFIG)});
-      done();
-    });
   });
 
   after(done => {
-    client.close();
     server.tryShutdown(done);
   });
 
-  it('Should end calls without explicit deadline with DEADLINE_EXCEEDED', done => {
-    client.unary({}, (error: grpc.ServiceError, value: unknown) =>{
-      assert(error);
-      assert.strictEqual(error.code, grpc.status.DEADLINE_EXCEEDED);
-      done();
+  describe('Client with configured timeout', () => {
+    let client: ServiceClient;
+
+    before(done => {
+      server.bindAsync('localhost:0', grpc.ServerCredentials.createInsecure(), (error, port) => {
+        if (error) {
+          done(error);
+          return;
+        }
+        server.start();
+        client = new Client(`localhost:${port}`, grpc.credentials.createInsecure(), {'grpc.service_config': JSON.stringify(TIMEOUT_SERVICE_CONFIG)});
+        done();
+      });
+    });
+  
+    after(() => {
+      client.close();
+    });
+  
+    it('Should end calls without explicit deadline with DEADLINE_EXCEEDED', done => {
+      client.unary({}, (error: grpc.ServiceError, value: unknown) =>{
+        assert(error);
+        assert.strictEqual(error.code, grpc.status.DEADLINE_EXCEEDED);
+        done();
+      });
+    });
+  
+    it('Should end calls with a long explicit deadline with DEADLINE_EXCEEDED', done => {
+      const deadline = new Date();
+      deadline.setSeconds(deadline.getSeconds() + 20);
+      client.unary({deadline}, (error: grpc.ServiceError, value: unknown) =>{
+        assert(error);
+        assert.strictEqual(error.code, grpc.status.DEADLINE_EXCEEDED);
+        done();
+      });
     });
   });
 
-  it('Should end calls with a long explicit deadline with DEADLINE_EXCEEDED', done => {
-    const deadline = new Date();
-    deadline.setSeconds(deadline.getSeconds() + 20);
-    client.unary({}, (error: grpc.ServiceError, value: unknown) =>{
-      assert(error);
-      assert.strictEqual(error.code, grpc.status.DEADLINE_EXCEEDED);
-      done();
+  describe('Deadline specified on call', () => {
+    let client: ServiceClient;
+
+    before(done => {
+      server.bindAsync('localhost:0', grpc.ServerCredentials.createInsecure(), (error, port) => {
+        if (error) {
+          done(error);
+          return;
+        }
+        server.start();
+        client = new Client(`localhost:${port}`, grpc.credentials.createInsecure());
+        done();
+      });
+    });
+  
+    after(() => {
+      client.close();
+    });
+  
+    it('Should end calls with a negative (millisecond timeout from call) explicit deadline with DEADLINE_EXCEEDED', done => {
+      const deadline = -1000;
+      client.unary({deadline}, (error: grpc.ServiceError, value: unknown) =>{
+        assert(error);
+        assert.strictEqual(error.code, grpc.status.DEADLINE_EXCEEDED);
+        done();
+      });
     });
   });
 });

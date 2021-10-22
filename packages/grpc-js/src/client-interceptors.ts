@@ -28,6 +28,7 @@ import {
   isInterceptingListener,
   MessageContext,
   Call,
+  Deadline,
 } from './call-stream';
 import { Status } from './constants';
 import { Channel } from './channel';
@@ -311,7 +312,7 @@ export class InterceptingCall implements InterceptingCallInterface {
 }
 
 function getCall(channel: Channel, path: string, options: CallOptions): Call {
-  const deadline = options.deadline ?? Infinity;
+  const deadline = parseDeadline(options);
   const host = options.host;
   const parent = options.parent ?? null;
   const propagateFlags = options.propagate_flags;
@@ -321,6 +322,14 @@ function getCall(channel: Channel, path: string, options: CallOptions): Call {
     call.setCredentials(credentials);
   }
   return call;
+}
+
+function parseDeadline(options: CallOptions): Deadline {
+  const deadline = options.deadline;
+  if (typeof deadline === 'number' && deadline < 0 && deadline !== -Infinity) {
+    return Date.now() + Math.abs(deadline);
+  }
+  return deadline ?? Infinity;
 }
 
 /**
